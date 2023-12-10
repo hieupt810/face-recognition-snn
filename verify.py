@@ -1,6 +1,9 @@
 import os
+import shutil
 import time
+from uuid import uuid4
 
+import cv2
 import numpy
 import torch
 import torch.nn as nn
@@ -45,33 +48,69 @@ class SiameseNetwork(nn.Module):
         return output1, output2
 
 
-transformation = torchvision.transforms.Compose(
-    [torchvision.transforms.Resize((100, 100)), torchvision.transforms.ToTensor()]
-)
-
-
-def verify(input_image, user_folder):
+def verify(input_image, user_folder, verify_threshold):
     # Load model
+    transformation = torchvision.transforms.Compose(
+        [torchvision.transforms.Resize((100, 100)), torchvision.transforms.ToTensor()]
+    )
     device = torch.device("cpu")
     model = SiameseNetwork().to(device)
     model.load_state_dict(torch.load("SNN50.pt", map_location=device))
 
     # Process
     x1 = transformation(Image.open(input_image).convert("L"))
-    anchors = os.path.join(os.getcwd(), user_folder)
     threshold = []
     start_time = time.time()
 
-    for anchor in os.listdir(anchors):
-        img = os.path.join(anchors, anchor)
+    for anchor in os.listdir(user_folder):
+        img = os.path.join(user_folder, anchor)
         x2 = transformation(Image.open(img).convert("L"))
 
         output1, output2 = model.forward(x1, x2)
         euclidean_distance = F.pairwise_distance(output1, output2)
         threshold.append(euclidean_distance.item())
 
-    return numpy.average(threshold), round(time.time() - start_time, 2)
+    return numpy.average(threshold) < verify_threshold, round(
+        time.time() - start_time, 2
+    )
 
 
 if __name__ == "__main__":
-    pass
+    cap = cv2.VideoCapture(1)
+
+    anchor_path = os.path.join(os.getcwd(), "user")
+    if os.path.isdir(anchor_path):
+        shutil.rmtree(anchor_path)
+
+    os.mkdir(anchor_path)
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        frame = frame[300:700, 550:850, :]
+        cv2.imshow("Real Time Verification", frame)
+
+        if cv2.waitKey(10) & 0xFF == ord("a"):
+            img = os.path.join(anchor_path, "{}.jpg".format(uuid4()))
+            cv2.imwrite(img, frame)
+
+        if cv2.waitKey(10) & 0xFF == ord("r"):
+            if os.path.isdir(anchor_path):
+                shutil.rmtree(anchor_path)
+
+            os.mkdir(anchor_path)
+
+        if cv2.waitKey(10) & 0xFF == ord("v"):
+            os.system("clear")
+
+            input = os.path.join(os.getcwd(), "input.jpg")
+            cv2.imwrite(input, frame)
+
+            value, execution_time = verify(input, anchor_path, 0.6)
+            print("Verified!" if value else "Unverified!")
+            print("Execution time:", execution_time, "second")
+
+        if cv2.waitKey(10) & 0xFF == ord("q"):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
