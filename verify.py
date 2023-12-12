@@ -76,7 +76,7 @@ def verify(input_image, user_folder, verify_threshold):
 
 
 if __name__ == "__main__":
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)
 
     anchor_path = os.path.join(os.getcwd(), "user")
     if os.path.isdir(anchor_path):
